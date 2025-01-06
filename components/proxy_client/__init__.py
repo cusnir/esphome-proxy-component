@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
 from esphome import automation
+from esphome.automation import maybe_simple_id
 
 DEPENDENCIES = ['network']
 AUTO_LOAD = ['async_tcp']
@@ -33,34 +34,43 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_TIMEOUT, default='10s'): cv.positive_time_period_milliseconds,
 }).extend(cv.COMPONENT_SCHEMA)
 
-PROXY_SEND_SCHEMA = cv.Schema({
-    cv.Required(CONF_URL): cv.string,
-    cv.Optional(CONF_METHOD, default='GET'): cv.string,
-    cv.Optional(CONF_HEADERS, default={}): cv.Schema({cv.string: cv.string}),
+SendActionSchema = cv.Schema({
+    cv.Required(CONF_URL): cv.templatable(cv.string),
+    cv.Optional(CONF_METHOD, default='GET'): cv.templatable(cv.string),
+    cv.Optional(CONF_HEADERS, default={}): cv.Schema({cv.string: cv.templatable(cv.string)}),
     cv.Optional(CONF_BODY): cv.templatable(cv.string),
     cv.Optional(CONF_ON_SUCCESS): automation.validate_automation(),
     cv.Optional(CONF_ON_ERROR): automation.validate_automation(),
 })
 
-@automation.register_action('proxy_client.send', SendAction, PROXY_SEND_SCHEMA)
+@automation.register_action('proxy_client.send', SendAction, SendActionSchema)
 async def proxy_send_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
+    await cg.register_parented(var, ACTION_ID)
     
-    cg.add(var.set_url(config[CONF_URL]))
-    cg.add(var.set_method(config[CONF_METHOD]))
+    template_ = await cg.templatable(config[CONF_URL], args, str)
+    cg.add(var.set_url(template_))
+    
+    template_ = await cg.templatable(config[CONF_METHOD], args, str)
+    cg.add(var.set_method(template_))
     
     for key, value in config.get(CONF_HEADERS, {}).items():
-        cg.add(var.add_header(key, value))
+        template_ = await cg.templatable(value, args, str)
+        cg.add(var.add_header(key, template_))
     
     if CONF_BODY in config:
-        template_ = await cg.templatable(config[CONF_BODY], args, cg.std_string)
+        template_ = await cg.templatable(config[CONF_BODY], args, str)
         cg.add(var.set_body(template_))
     
     if CONF_ON_SUCCESS in config:
-        await automation.build_automation(var.get_on_success_trigger(), [], config[CONF_ON_SUCCESS])
+        await automation.build_automation(
+            var.get_on_success_trigger(), [], config[CONF_ON_SUCCESS]
+        )
     
     if CONF_ON_ERROR in config:
-        await automation.build_automation(var.get_on_error_trigger(), [(cg.std_string, 'error')], config[CONF_ON_ERROR])
+        await automation.build_automation(
+            var.get_on_error_trigger(), [(str, 'error')], config[CONF_ON_ERROR]
+        )
     
     return var
 
@@ -77,3 +87,4 @@ async def to_code(config):
         cg.add(var.set_proxy_password(config[CONF_PROXY_PASSWORD]))
     
     cg.add(var.set_timeout(config[CONF_TIMEOUT]))
+    
