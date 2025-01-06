@@ -2,7 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
-#include "esphome/components/network/ip_address.h"
+#include "esphome/core/log.h"
 #include <map>
 #include <WiFiClient.h>
 
@@ -40,24 +40,19 @@ class ProxyClient : public Component {
 
 class SendAction : public Action<> {
  public:
-  SendAction() {}
-  
+  void set_parent(ProxyClient *parent) { parent_ = parent; }
   void set_url(const std::string &url) { url_ = url; }
   void set_method(const std::string &method) { method_ = method; }
   void add_header(const std::string &key, const std::string &value) { headers_[key] = value; }
   void set_body(const std::string &body) { body_ = body; }
   
-  void set_parent(ProxyClient *parent) { parent_ = parent; }
-  void add_on_success_trigger(Trigger<> *trigger) { this->on_success_trigger_ = trigger; }
-  void add_on_error_trigger(Trigger<std::string> *trigger) { this->on_error_trigger_ = trigger; }
-  
   Trigger<> *get_on_success_trigger() const { return this->on_success_trigger_; }
   Trigger<std::string> *get_on_error_trigger() const { return this->on_error_trigger_; }
   
-  void play(AsyncWebServerRequest *request) override;
+  void play(Action<> *action) override;
   
  protected:
-  ProxyClient *parent_;
+  ProxyClient *parent_{nullptr};
   std::string url_;
   std::string method_{"GET"};
   std::map<std::string, std::string> headers_;
@@ -65,3 +60,6 @@ class SendAction : public Action<> {
   Trigger<> *on_success_trigger_{nullptr};
   Trigger<std::string> *on_error_trigger_{nullptr};
 };
+
+}  // namespace proxy_client
+}  // namespace esphome

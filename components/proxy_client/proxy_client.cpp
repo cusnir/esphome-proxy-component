@@ -1,6 +1,5 @@
 #include "proxy_client.h"
 #include "esphome/core/log.h"
-#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace proxy_client {
@@ -51,21 +50,26 @@ bool ProxyClient::parse_url(const std::string &url, std::string &protocol, std::
 }
 
 bool ProxyClient::establish_proxy_tunnel(const std::string &target_host, uint16_t target_port) {
+  client_.setTimeout(this->timeout_);
+  
   if (!client_.connect(this->proxy_host_.c_str(), this->proxy_port_)) {
     ESP_LOGE(TAG, "Failed to connect to proxy");
     return false;
   }
   
-  // Send CONNECT request
   client_.printf("CONNECT %s:%d HTTP/1.1\r\n", target_host.c_str(), target_port);
   client_.printf("Host: %s:%d\r\n", target_host.c_str(), target_port);
+  client_.println("User-Agent: ESPHome");
+  
   if (this->proxy_username_.has_value() && this->proxy_password_.has_value()) {
-    std::string auth = this->proxy_username_.value() + ":" + this->proxy_password_.value();
-    client_.printf("Proxy-Authorization: Basic %s\r\n", base64_encode((uint8_t *) auth.c_str(), auth.length()).c_str());
+    String auth = this->proxy_username_.value().c_str();
+    auth += ":";
+    auth += this->proxy_password_.value().c_str();
+    String encoded = base64::encode(auth);
+    client_.printf("Proxy-Authorization: Basic %s\r\n", encoded.c_str());
   }
   client_.println();
   
-  // Read response
   String line = client_.readStringUntil('\n');
   if (!line.startsWith("HTTP/1.1 200")) {
     ESP_LOGE(TAG, "Proxy tunnel failed: %s", line.c_str());
@@ -73,7 +77,6 @@ bool ProxyClient::establish_proxy_tunnel(const std::string &target_host, uint16_
     return false;
   }
   
-  // Skip remaining headers
   while (client_.available()) {
     String skip = client_.readStringUntil('\n');
     if (skip == "\r" || skip == "\n" || skip.length() == 0)
@@ -94,31 +97,32 @@ bool ProxyClient::send_request(const std::string &url, const std::string &method
     return false;
   }
   
-  if (protocol == "https") {
+  bool use_tunnel = protocol == "https";
+  if (use_tunnel) {
     if (!establish_proxy_tunnel(host, port)) {
       return false;
     }
   } else {
+    client_.setTimeout(this->timeout_);
     if (!client_.connect(this->proxy_host_.c_str(), this->proxy_port_)) {
       ESP_LOGE(TAG, "Failed to connect to proxy");
       return false;
     }
   }
   
-  // Send request
-  if (protocol == "https") {
+  if (use_tunnel) {
     client_.printf("%s %s HTTP/1.1\r\n", method.c_str(), path.c_str());
   } else {
     client_.printf("%s %s HTTP/1.1\r\n", method.c_str(), url.c_str());
   }
-  client_.printf("Host: %s\r\n", host.c_str());
   
-  // Send headers
+  client_.printf("Host: %s\r\n", host.c_str());
+  client_.println("User-Agent: ESPHome");
+  
   for (const auto &header : headers) {
     client_.printf("%s: %s\r\n", header.first.c_str(), header.second.c_str());
   }
   
-  // Send body if present
   if (!body.empty()) {
     client_.printf("Content-Length: %d\r\n", body.length());
     client_.println();
@@ -127,14 +131,55 @@ bool ProxyClient::send_request(const std::string &url, const std::string &method
     client_.println();
   }
   
-  // Read response
+  uint32_t start = millis();
+  while (!client_.available() && millis() - start < this->timeout_) {
+    delay(10);
+  }
+  
+  if (!client_.available()) {
+    ESP_LOGE(TAG, "Response timeout");
+    client_.stop();
+    return false;
+  }
+  
   String status = client_.readStringUntil('\n');
   response = status.c_str();
+  response += "\n";
   
-  // Read headers and body
   while (client_.available()) {
     String line = client_.readStringUntil('\n');
     response += line.c_str();
     response += "\n";
+    
+    if (millis() - start > this->timeout_) {
+      ESP_LOGE(TAG, "Response read timeout");
+      client_.stop();
+      return false;
+    }
   }
   
+  client_.stop();
+  return true;
+}
+
+void SendAction::play(Action<> *action) {
+  std::string response;
+  if (this->parent_ == nullptr) {
+    ESP_LOGE(TAG, "No parent set for SendAction");
+    return;
+  }
+  
+  if (this->parent_->send_request(this->url_, this->method_, this->headers_,
+                                 this->body_.value_or(""), response)) {
+    if (this->on_success_trigger_ != nullptr) {
+      this->on_success_trigger_->trigger();
+    }
+  } else {
+    if (this->on_error_trigger_ != nullptr) {
+      this->on_error_trigger_->trigger(response);
+    }
+  }
+}
+
+}  // namespace proxy_client
+}  // namespace esphome
