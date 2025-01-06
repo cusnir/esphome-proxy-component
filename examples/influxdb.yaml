@@ -1,0 +1,26 @@
+# Full example of sensor data to InfluxDB through proxy
+esphome:
+  name: sensor_node
+
+external_components:
+  - source: github://cusnir/esphome-proxy-component@main
+    components: [ proxy_client ]
+
+proxy_client:
+  proxy_host: "192.168.1.5"
+  proxy_port: 3128
+
+sensor:
+  - platform: pmsx003
+    pm_2_5:
+      name: "Particulate Matter 2.5"
+      on_value:
+        then:
+          - proxy_client.send:
+              url: "http://influxdb:8086/api/v2/write?org=myorg&bucket=sensors"
+              method: POST
+              headers:
+                Authorization: "Token YOUR_INFLUXDB_TOKEN"
+                Content-Type: "text/plain"
+              body: !lambda |-
+                return "air_quality,sensor=pms pm2_5=" + str(x);

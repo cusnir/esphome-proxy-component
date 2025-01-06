@@ -1,0 +1,6 @@
+proxy_client:
+  proxy_host: "192.168.1.5"    # Required: Proxy server hostname or IP
+  proxy_port: 3128             # Required: Proxy server port
+  proxy_username: "user"       # Optional: Proxy authentication username
+  proxy_password: "pass"       # Optional: Proxy authentication password
+  timeout: 10s                 # Optional: Connection timeout (default: 10s)

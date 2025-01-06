@@ -1,0 +1,12 @@
+# Example of sending notifications through webhook
+binary_sensor:
+  - platform: gpio
+    pin: GPIO5
+    name: "Door Sensor"
+    on_state:
+      then:
+        - proxy_client.send:
+            url: "https://webhook.example.com/door"
+            method: POST
+            body: !lambda |-
+              return "{\"status\": \"" + (x ? "opened" : "closed") + "\"}";
