@@ -34,7 +34,12 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_TIMEOUT, default='10s'): cv.positive_time_period_milliseconds,
 }).extend(cv.COMPONENT_SCHEMA)
 
+PROXY_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.use_id(ProxyClient),
+})
+
 SendActionSchema = cv.Schema({
+    cv.GenerateID(): cv.use_id(ProxyClient),
     cv.Required(CONF_URL): cv.templatable(cv.string),
     cv.Optional(CONF_METHOD, default='GET'): cv.templatable(cv.string),
     cv.Optional(CONF_HEADERS, default={}): cv.Schema({cv.string: cv.templatable(cv.string)}),
@@ -46,7 +51,7 @@ SendActionSchema = cv.Schema({
 @automation.register_action('proxy_client.send', SendAction, SendActionSchema)
 async def proxy_send_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
-    await cg.register_parented(var, ACTION_ID)
+    await cg.register_parented(var, await cg.get_variable(config[CONF_ID]))
     
     template_ = await cg.templatable(config[CONF_URL], args, str)
     cg.add(var.set_url(template_))
@@ -87,4 +92,3 @@ async def to_code(config):
         cg.add(var.set_proxy_password(config[CONF_PROXY_PASSWORD]))
     
     cg.add(var.set_timeout(config[CONF_TIMEOUT]))
-    
