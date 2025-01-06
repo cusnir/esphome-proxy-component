@@ -64,8 +64,40 @@ bool ProxyClient::establish_proxy_tunnel(const std::string &target_host, uint16_
   
   if (this->proxy_username_.has_value() && this->proxy_password_.has_value()) {
     std::string auth = this->proxy_username_.value() + ":" + this->proxy_password_.value();
-    std::string encoded = encode_base64((const uint8_t *) auth.c_str(), auth.length());
-    client_.printf("Proxy-Authorization: Basic %s\r\n", encoded.c_str());
+    size_t auth_len = auth.length();
+    size_t encoded_len = (auth_len + 2) / 3 * 4;  // Base64 length calculation
+    char encoded[encoded_len + 1];
+    
+    // Simple base64 encoding
+    static const char base64_chars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+    
+    size_t i = 0, j = 0;
+    uint32_t octet_a, octet_b, octet_c;
+    uint32_t triple;
+    
+    while (i < auth_len) {
+      octet_a = i < auth_len ? (unsigned char)auth[i++] : 0;
+      octet_b = i < auth_len ? (unsigned char)auth[i++] : 0;
+      octet_c = i < auth_len ? (unsigned char)auth[i++] : 0;
+      
+      triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+      
+      encoded[j++] = base64_chars[(triple >> 3 * 6) & 0x3F];
+      encoded[j++] = base64_chars[(triple >> 2 * 6) & 0x3F];
+      encoded[j++] = base64_chars[(triple >> 1 * 6) & 0x3F];
+      encoded[j++] = base64_chars[(triple >> 0 * 6) & 0x3F];
+    }
+    
+    // Add padding
+    for (i = 0; i < (3 - auth_len % 3) % 3; i++)
+      encoded[encoded_len - 1 - i] = '=';
+    
+    encoded[encoded_len] = 0;
+    
+    client_.printf("Proxy-Authorization: Basic %s\r\n", encoded);
   }
   client_.println();
   
@@ -159,19 +191,6 @@ bool ProxyClient::send_request(const std::string &url, const std::string &method
   
   client_.stop();
   return true;
-}
-
-void SendAction::play(void *) {
-  std::string response;
-  if (this->parent_ == nullptr) {
-    ESP_LOGE(TAG, "No parent set for SendAction");
-    return;
-  }
-  
-  if (this->parent_->send_request(this->url_, this->method_, this->headers_,
-                                 this->body_.value_or(""), response)) {
-    this->trigger();
-  }
 }
 
 }  // namespace proxy_client

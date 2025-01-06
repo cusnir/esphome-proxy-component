@@ -39,18 +39,25 @@ class ProxyClient : public Component {
   WiFiClient client_;
 };
 
-class SendAction : public Trigger<>, public Action {
+template<typename... Ts>
+class SendAction : public Action<Ts...>, public Parented<ProxyClient> {
  public:
-  void set_parent(ProxyClient *parent) { parent_ = parent; }
   void set_url(const std::string &url) { url_ = url; }
   void set_method(const std::string &method) { method_ = method; }
   void add_header(const std::string &key, const std::string &value) { headers_[key] = value; }
   void set_body(const std::string &body) { body_ = body; }
   
-  void play(void *) override;
+  void play(Ts... x) override {
+    std::string response;
+    if (this->parent_->send_request(this->url_, this->method_, this->headers_,
+                                   this->body_.value_or(""), response)) {
+      ESP_LOGD("proxy_client", "Request successful");
+    } else {
+      ESP_LOGE("proxy_client", "Request failed: %s", response.c_str());
+    }
+  }
   
  protected:
-  ProxyClient *parent_{nullptr};
   std::string url_;
   std::string method_{"GET"};
   std::map<std::string, std::string> headers_;
