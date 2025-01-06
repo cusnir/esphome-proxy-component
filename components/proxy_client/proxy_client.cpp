@@ -1,5 +1,6 @@
 #include "proxy_client.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace proxy_client {
@@ -62,10 +63,8 @@ bool ProxyClient::establish_proxy_tunnel(const std::string &target_host, uint16_
   client_.println("User-Agent: ESPHome");
   
   if (this->proxy_username_.has_value() && this->proxy_password_.has_value()) {
-    String auth = this->proxy_username_.value().c_str();
-    auth += ":";
-    auth += this->proxy_password_.value().c_str();
-    String encoded = base64::encode(auth);
+    std::string auth = this->proxy_username_.value() + ":" + this->proxy_password_.value();
+    std::string encoded = encode_base64((const uint8_t *) auth.c_str(), auth.length());
     client_.printf("Proxy-Authorization: Basic %s\r\n", encoded.c_str());
   }
   client_.println();
@@ -162,7 +161,7 @@ bool ProxyClient::send_request(const std::string &url, const std::string &method
   return true;
 }
 
-void SendAction::play(Action<> *action) {
+void SendAction::play(void *) {
   std::string response;
   if (this->parent_ == nullptr) {
     ESP_LOGE(TAG, "No parent set for SendAction");
@@ -171,13 +170,7 @@ void SendAction::play(Action<> *action) {
   
   if (this->parent_->send_request(this->url_, this->method_, this->headers_,
                                  this->body_.value_or(""), response)) {
-    if (this->on_success_trigger_ != nullptr) {
-      this->on_success_trigger_->trigger();
-    }
-  } else {
-    if (this->on_error_trigger_ != nullptr) {
-      this->on_error_trigger_->trigger(response);
-    }
+    this->trigger();
   }
 }
 

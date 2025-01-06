@@ -3,6 +3,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 #include <map>
 #include <WiFiClient.h>
 
@@ -38,7 +39,7 @@ class ProxyClient : public Component {
   WiFiClient client_;
 };
 
-class SendAction : public Action<> {
+class SendAction : public Trigger<>, public Action {
  public:
   void set_parent(ProxyClient *parent) { parent_ = parent; }
   void set_url(const std::string &url) { url_ = url; }
@@ -46,10 +47,7 @@ class SendAction : public Action<> {
   void add_header(const std::string &key, const std::string &value) { headers_[key] = value; }
   void set_body(const std::string &body) { body_ = body; }
   
-  Trigger<> *get_on_success_trigger() const { return this->on_success_trigger_; }
-  Trigger<std::string> *get_on_error_trigger() const { return this->on_error_trigger_; }
-  
-  void play(Action<> *action) override;
+  void play(void *) override;
   
  protected:
   ProxyClient *parent_{nullptr};
@@ -57,8 +55,6 @@ class SendAction : public Action<> {
   std::string method_{"GET"};
   std::map<std::string, std::string> headers_;
   optional<std::string> body_;
-  Trigger<> *on_success_trigger_{nullptr};
-  Trigger<std::string> *on_error_trigger_{nullptr};
 };
 
 }  // namespace proxy_client
