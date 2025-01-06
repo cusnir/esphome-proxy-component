@@ -1,6 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_URL, CONF_METHOD, CONF_BODY
+from esphome.const import CONF_ID
+from esphome import automation
 
 DEPENDENCIES = ['network']
 AUTO_LOAD = ['async_tcp']
@@ -11,13 +12,16 @@ CONF_PROXY_PORT = 'proxy_port'
 CONF_PROXY_USERNAME = 'proxy_username'
 CONF_PROXY_PASSWORD = 'proxy_password'
 CONF_TIMEOUT = 'timeout'
-CONF_HEADERS = 'headers'  # Define our own CONF_HEADERS
+CONF_URL = 'url'
+CONF_METHOD = 'method'
+CONF_HEADERS = 'headers'
+CONF_BODY = 'body'
 CONF_ON_SUCCESS = 'on_success'
 CONF_ON_ERROR = 'on_error'
 
 proxy_client_ns = cg.esphome_ns.namespace('proxy_client')
 ProxyClient = proxy_client_ns.class_('ProxyClient', cg.Component)
-SendAction = proxy_client_ns.class_('SendAction', cg.Action)
+SendAction = proxy_client_ns.class_('SendAction', automation.Action)
 
 # Configuration Schemas
 CONFIG_SCHEMA = cv.Schema({
@@ -34,14 +38,13 @@ PROXY_SEND_SCHEMA = cv.Schema({
     cv.Optional(CONF_METHOD, default='GET'): cv.string,
     cv.Optional(CONF_HEADERS, default={}): cv.Schema({cv.string: cv.string}),
     cv.Optional(CONF_BODY): cv.templatable(cv.string),
-    cv.Optional(CONF_ON_SUCCESS): cv.valid,
-    cv.Optional(CONF_ON_ERROR): cv.valid,
+    cv.Optional(CONF_ON_SUCCESS): automation.validate_automation(),
+    cv.Optional(CONF_ON_ERROR): automation.validate_automation(),
 })
 
 @automation.register_action('proxy_client.send', SendAction, PROXY_SEND_SCHEMA)
 async def proxy_send_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
-    cg.add(var.set_parent(await cg.get_variable(config[CONF_ID])))
     
     cg.add(var.set_url(config[CONF_URL]))
     cg.add(var.set_method(config[CONF_METHOD]))
@@ -52,6 +55,12 @@ async def proxy_send_to_code(config, action_id, template_arg, args):
     if CONF_BODY in config:
         template_ = await cg.templatable(config[CONF_BODY], args, cg.std_string)
         cg.add(var.set_body(template_))
+    
+    if CONF_ON_SUCCESS in config:
+        await automation.build_automation(var.get_on_success_trigger(), [], config[CONF_ON_SUCCESS])
+    
+    if CONF_ON_ERROR in config:
+        await automation.build_automation(var.get_on_error_trigger(), [(cg.std_string, 'error')], config[CONF_ON_ERROR])
     
     return var
 
