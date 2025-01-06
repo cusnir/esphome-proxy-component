@@ -2,7 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
 from esphome import automation
-from esphome.automation import maybe_simple_id
+from esphome.cpp_generator import std_string
 
 DEPENDENCIES = ['network']
 AUTO_LOAD = ['async_tcp']
@@ -43,7 +43,7 @@ SendActionSchema = cv.Schema({
     cv.Required(CONF_URL): cv.templatable(cv.string),
     cv.Optional(CONF_METHOD, default='GET'): cv.templatable(cv.string),
     cv.Optional(CONF_HEADERS, default={}): cv.Schema({cv.string: cv.templatable(cv.string)}),
-    cv.Optional(CONF_BODY): cv.templatable(cv.string),
+    cv.Optional(CONF_BODY): cv.templatable(cv.string_strict),
     cv.Optional(CONF_ON_SUCCESS): automation.validate_automation(),
     cv.Optional(CONF_ON_ERROR): automation.validate_automation(),
 })
@@ -53,18 +53,18 @@ async def proxy_send_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, await cg.get_variable(config[CONF_ID]))
     
-    template_ = await cg.templatable(config[CONF_URL], args, str)
+    template_ = await cg.templatable(config[CONF_URL], args, std_string)
     cg.add(var.set_url(template_))
     
-    template_ = await cg.templatable(config[CONF_METHOD], args, str)
+    template_ = await cg.templatable(config[CONF_METHOD], args, std_string)
     cg.add(var.set_method(template_))
     
     for key, value in config.get(CONF_HEADERS, {}).items():
-        template_ = await cg.templatable(value, args, str)
+        template_ = await cg.templatable(value, args, std_string)
         cg.add(var.add_header(key, template_))
     
     if CONF_BODY in config:
-        template_ = await cg.templatable(config[CONF_BODY], args, str)
+        template_ = await cg.templatable(config[CONF_BODY], args, std_string)
         cg.add(var.set_body(template_))
     
     if CONF_ON_SUCCESS in config:
@@ -74,7 +74,7 @@ async def proxy_send_to_code(config, action_id, template_arg, args):
     
     if CONF_ON_ERROR in config:
         await automation.build_automation(
-            var.get_on_error_trigger(), [(str, 'error')], config[CONF_ON_ERROR]
+            var.get_on_error_trigger(), [(std_string, 'error')], config[CONF_ON_ERROR]
         )
     
     return var
