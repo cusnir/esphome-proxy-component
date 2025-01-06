@@ -45,12 +45,28 @@ class SendAction : public Action<Ts...>, public Parented<ProxyClient> {
   void set_url(const std::string &url) { url_ = url; }
   void set_method(const std::string &method) { method_ = method; }
   void add_header(const std::string &key, const std::string &value) { headers_[key] = value; }
-  void set_body(const std::string &body) { body_ = body; }
+
+  // Set body from string
+  void set_body(const std::string &body) { 
+    this->body_static_ = body;
+    this->body_lambda_ = nullptr;
+  }
+
+  // Set body from lambda
+  template<typename F>
+  void set_body(F f) {
+    this->body_lambda_ = f;
+    this->body_static_ = "";
+  }
   
   void play(Ts... x) override {
+    std::string body = this->body_static_;
+    if (this->body_lambda_ != nullptr) {
+      body = this->body_lambda_();
+    }
+    
     std::string response;
-    if (this->parent_->send_request(this->url_, this->method_, this->headers_,
-                                   this->body_.value_or(""), response)) {
+    if (this->parent_->send_request(this->url_, this->method_, this->headers_, body, response)) {
       ESP_LOGD("proxy_client", "Request successful");
     } else {
       ESP_LOGE("proxy_client", "Request failed: %s", response.c_str());
@@ -61,7 +77,8 @@ class SendAction : public Action<Ts...>, public Parented<ProxyClient> {
   std::string url_;
   std::string method_{"GET"};
   std::map<std::string, std::string> headers_;
-  optional<std::string> body_;
+  std::string body_static_;
+  std::function<std::string()> body_lambda_{nullptr};
 };
 
 }  // namespace proxy_client
